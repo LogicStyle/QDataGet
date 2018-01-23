@@ -302,7 +302,7 @@ lcdb.update.LC_IndexComponentsWeight <- function(begT,endT,IndexID){
 
 #' @rdname lcdb.update
 #' @export
-lcdb.update.QT_IndexQuote <- function(begT,endT,IndexID){
+lcdb.update.QT_IndexQuote <- function(begT,endT,IndexID,datasrc='quant'){
   con <- db.local("main")
   if(TRUE){
     if(missing(begT)){
@@ -813,34 +813,26 @@ lcdb.update.IndexQuote_000985E <- function(begT,endT){
   } else if(begT>endT){
     stop("please update the 'QT_IndexQuote' table firstly!")
   } else {
-    init_data <- dbGetQuery(con,paste("select * from QT_IndexQuote where ID='EI000985E' and TradingDay=",begT))
-    begT <- intdate2r(begT)
+    init_close <- dbGetQuery(con,paste("select ClosePrice from QT_IndexQuote where ID='EI000985E' and TradingDay=",begT))[[1]]
+    begT <- trday.nearby(intdate2r(begT),by=1)
     endT <- intdate2r(endT)
-    begT <- trday.nearby(begT,by=1)  # -- one day after
-    # TS <- getTS(begT,indexID = 'EI000985')
     TS <- getIndexComp(indexID = 'EI000985',endT = begT,drop=FALSE)
-    # tmp.dates <- getRebDates(begT,endT,rebFreq = 'day')
-    tmp.dates <- trday.get(begT,endT)
+    dates <- trday.get(begT,endT)
     
-    cat('calculating',rdate2int(min(tmp.dates)),"~",rdate2int(max(tmp.dates)),'...\n')
-    qr <- paste("select TradingDay,ID,DailyReturn from QT_DailyQuote2
-                where TradingDay>=",rdate2int(min(tmp.dates))," and TradingDay<=",rdate2int(max(tmp.dates)))
-    quotedf <- dbGetQuery(con,qr)
-    quotedf$TradingDay <- intdate2r(quotedf$TradingDay)
-    quotedf <- quotedf[quotedf$ID %in% TS$stockID,]
+    cat('calculating',rdate2int(min(dates)),"~",rdate2int(max(dates)),'...\n')
+    quotedf <- getQuote(TS$stockID,begT,endT,variables = 'pct_chg',split = FALSE)
+    index <- quotedf %>% dplyr::rename(TradingDay=date) %>% dplyr::group_by(TradingDay) %>%
+      dplyr::summarise(DailyReturn = mean(pct_chg, na.rm = TRUE)) %>% dplyr::ungroup()
+    index <- as.data.frame(index)
     
-    index <- quotedf %>% dplyr::group_by(TradingDay) %>%
-      dplyr::summarise(DailyReturn = mean(DailyReturn, na.rm = TRUE))
-    
-    
-    tmp <- xts::xts(index$DailyReturn, order.by = index$TradingDay)
-    tmp <- WealthIndex(tmp)
-    close <- data.frame(TradingDay=zoo::index(tmp),close=zoo::coredata(tmp)*init_data$ClosePrice,row.names =NULL)
+    close <- xts::xts(index[,-1], order.by = index[,1])
+    close <- WealthIndex(close)
+    close <- data.frame(TradingDay=zoo::index(close),ClosePrice=zoo::coredata(close)*init_close,row.names =NULL)
     colnames(close) <- c('TradingDay','ClosePrice')
     index <- merge(index,close,by='TradingDay')
     index <- transform(index,TradingDay=rdate2int(TradingDay),
                        InnerCode=c(1000985),
-                       PrevClosePrice=c(NA,index$ClosePrice[-(nrow(index))]),
+                       PrevClosePrice=dplyr::lag(index$ClosePrice,default = init_close),
                        OpenPrice=c(NA),
                        HighPrice=c(NA),
                        LowPrice=c(NA),
@@ -854,7 +846,6 @@ lcdb.update.IndexQuote_000985E <- function(begT,endT){
     index <- index[,c("InnerCode","TradingDay","PrevClosePrice","OpenPrice","HighPrice",
                       "LowPrice","ClosePrice","TurnoverVolume","TurnoverValue","TurnoverDeals",
                       "ChangePCT","NegotiableMV","UpdateTime","DailyReturn","ID")]
-    index$PrevClosePrice[1] <- init_data$ClosePrice
     dbExecute(con,paste("delete from QT_IndexQuote where ID='EI000985E' and TradingDay >=",rdate2int(begT),"and TradingDay <=",rdate2int(endT)))
     dbWriteTable(con,'QT_IndexQuote',index,overwrite=FALSE,append=TRUE,row.names=FALSE)
   }

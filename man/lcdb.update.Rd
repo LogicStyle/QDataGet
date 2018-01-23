@@ -47,7 +47,7 @@ lcdb.update.LC_IndexComponent()
 
 lcdb.update.LC_IndexComponentsWeight(begT, endT, IndexID)
 
-lcdb.update.QT_IndexQuote(begT, endT, IndexID)
+lcdb.update.QT_IndexQuote(begT, endT, IndexID, datasrc = "quant")
 
 lcdb.update.QT_DailyQuote(begT, endT, stockID)
 
