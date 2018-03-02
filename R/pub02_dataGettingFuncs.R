@@ -1829,11 +1829,13 @@ MF_getQuoteold <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc 
 #' re <- MF_getQuote(fundID = fundID, variables = variables,datasrc = 'jy')
 MF_getQuote <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c("wind","jy","ts")){
   datasrc <- match.arg(datasrc)
+  if(datasrc=='wind'){
+    require(WindR)
+    WindR::w.start(showmenu = FALSE)
+  }
   
   if(missing(begT)){
     if(datasrc=='wind'){
-      require(WindR)
-      WindR::w.start(showmenu = FALSE)
       fundinfo <- w.wss(fundID,'fund_setupdate')[[2]]
       fundinfo <- fundinfo %>% dplyr::rename(fundID=CODE,begT=FUND_SETUPDATE) %>% 
         dplyr::mutate(begT=w.asDateTime(begT,asdate = TRUE))
@@ -1864,20 +1866,22 @@ MF_getQuote <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c
     and s.SecuCode in",brkQT(stringr::str_replace_all(fundID,'.OF','')),
     " order by f.EndDate,s.SecuCode")
     fundts <- queryAndClose.odbc(db.jy(),qr,stringsAsFactors = FALSE)
-    fundts <- fundts %>% dplyr::mutate(date=intdate2r(date)) %>% 
+    fundts <- fundts %>% dplyr::mutate(date=intdate2r(date))
+    tradingdays <- trday.get(min(fundts$date),max(fundts$date)) #remove untrading days
+    fundts <- fundts %>% dplyr::filter(date %in% tradingdays) %>% 
       dplyr::left_join(fundinfo,by='fundID') %>% 
       dplyr::filter(date>=begT,date<=endT) %>% dplyr::select(-begT,-endT)
+    
   }else if(datasrc == "ts"){
     #
   }else if(datasrc == "wind"){
     # NAV_adj_return1 : fu quan dan wei jing zhi zeng zhang lv (in % unit)
     # NAV_adj: fu quan dan wei jing zhi, houfuquan
-    fundIDqr <- paste(fundID, collapse = ",")
     fundts <- data.frame()
     for(i in 1:nrow(fundinfo)){
       fundts_ <- w.wsd(fundinfo$fundID[i],variables,fundinfo$begT[i],fundinfo$endT[i])[[2]]
       fundts_ <- fundts_ %>% dplyr::rename(date=DATETIME) %>% dplyr::mutate(fundID=fundinfo$fundID[i]) %>% 
-        dplyr::select(date,fundID,everything())
+        dplyr::select(date,fundID,dplyr::everything())
       fundts <- rbind(fundts,fundts_)
     }
   }
