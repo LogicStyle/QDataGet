@@ -1761,15 +1761,8 @@ getIFrtn <- function(code,begT,endT,adj=FALSE){
 # ===================== xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ==============
 
 
-#' MF_getQuote
-#' 
-#' @export
-#' @examples 
-#' fundID <- c("519983.OF","519987.OF")
-#' begT <- as.Date("2016-01-05")
-#' variables <- c("NAV_adj_return1")
-#' MF_getQuote(fundID = fundID, begT = begT, variables = variables)
-MF_getQuote <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c("wind","jy","ts")){
+
+MF_getQuoteold <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c("wind","jy","ts")){
   
   datasrc <- match.arg(datasrc)
   if(missing(begT)){
@@ -1809,6 +1802,87 @@ MF_getQuote <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c
   return(re)
 }
 
+
+#' MF_getQuote
+#' 
+#' get fund's quote from multiple data source
+#' @param fundID
+#' @param begT a vector of begin date or a single date,begT can be missing,if missing the fund's setup date is begT
+#' @param endT a vector of begin date or a single date,endT can be missing.
+#' @param variables see examples.
+#' @param datasrc default data source is wind.
+#' @export
+#' @examples 
+#' fundID <- c("519983.OF","519987.OF")
+#' begT <- as.Date("2016-01-05")
+#' # -- get one variable from wind
+#' variables <- "NAV_adj_return1"
+#' re <- MF_getQuote(fundID = fundID, begT = begT, variables = variables)
+#' # -- get multiple variables from wind
+#' variables <- "nav,NAV_adj,NAV_adj_return1"
+#' re <- MF_getQuote(fundID = fundID, begT = begT, variables = variables)
+#' 
+#' # -- get one variable from jy
+#' variables <- "NVDailyGrowthRate"
+#' re <- MF_getQuote(fundID = fundID, variables = variables,datasrc = 'jy')
+#' variables <- "UnitNV,NVDailyGrowthRate"
+#' re <- MF_getQuote(fundID = fundID, variables = variables,datasrc = 'jy')
+MF_getQuote <- function(fundID,begT,endT,variables="NAV_adj_return1",datasrc = c("wind","jy","ts")){
+  datasrc <- match.arg(datasrc)
+  
+  if(missing(begT)){
+    if(datasrc=='wind'){
+      require(WindR)
+      WindR::w.start(showmenu = FALSE)
+      fundinfo <- w.wss(fundID,'fund_setupdate')[[2]]
+      fundinfo <- fundinfo %>% dplyr::rename(fundID=CODE,begT=FUND_SETUPDATE) %>% 
+        dplyr::mutate(begT=w.asDateTime(begT,asdate = TRUE))
+    }else if(datasrc=='jy'){
+      qr <- paste("select s.SecuCode+'.OF' 'fundID',
+      convert(varchar,f.EstablishmentDate,112) 'begT'  
+      from MF_FundArchives f,SecuMain s
+      where f.InnerCode=s.InnerCode
+      and s.SecuCode in ",brkQT(stringr::str_replace_all(fundID,'.OF','')))
+      fundinfo <- queryAndClose.odbc(db.jy(),qr,stringsAsFactors = FALSE)
+      fundinfo <- transform(fundinfo,begT=intdate2r(begT))
+    }
+    
+  }else{
+    fundinfo <- data.frame(fundID=fundID,begT=begT,stringsAsFactors = FALSE)
+  }
+  
+  if(missing(endT)){
+    endT <- trday.nearby(Sys.Date(),-1)
+  }
+  fundinfo <- transform(fundinfo,endT=endT)
+  
+  if(datasrc == "jy"){
+    qr <- paste("select convert(varchar,f.EndDate,112) 'date',
+    s.SecuCode+'.OF' 'fundID',",variables,
+    "from MF_NetValue f,SecuMain s
+    where f.InnerCode=s.InnerCode
+    and s.SecuCode in",brkQT(stringr::str_replace_all(fundID,'.OF','')),
+    " order by f.EndDate,s.SecuCode")
+    fundts <- queryAndClose.odbc(db.jy(),qr,stringsAsFactors = FALSE)
+    fundts <- fundts %>% dplyr::mutate(date=intdate2r(date)) %>% 
+      dplyr::left_join(fundinfo,by='fundID') %>% 
+      dplyr::filter(date>=begT,date<=endT) %>% dplyr::select(-begT,-endT)
+  }else if(datasrc == "ts"){
+    #
+  }else if(datasrc == "wind"){
+    # NAV_adj_return1 : fu quan dan wei jing zhi zeng zhang lv (in % unit)
+    # NAV_adj: fu quan dan wei jing zhi, houfuquan
+    fundIDqr <- paste(fundID, collapse = ",")
+    fundts <- data.frame()
+    for(i in 1:nrow(fundinfo)){
+      fundts_ <- w.wsd(fundinfo$fundID[i],variables,fundinfo$begT[i],fundinfo$endT[i])[[2]]
+      fundts_ <- fundts_ %>% dplyr::rename(date=DATETIME) %>% dplyr::mutate(fundID=fundinfo$fundID[i]) %>% 
+        dplyr::select(date,fundID,everything())
+      fundts <- rbind(fundts,fundts_)
+    }
+  }
+  return(fundts)
+}
 
 
 

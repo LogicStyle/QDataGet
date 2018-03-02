@@ -7,12 +7,31 @@
 MF_getQuote(fundID, begT, endT, variables = "NAV_adj_return1",
   datasrc = c("wind", "jy", "ts"))
 }
+\arguments{
+\item{begT}{a vector of begin date or a single date,begT can be missing,if missing the fund's setup date is begT}
+
+\item{endT}{a vector of begin date or a single date,endT can be missing.}
+
+\item{variables}{see examples.}
+
+\item{datasrc}{default data source is wind.}
+}
 \description{
-MF_getQuote
+get fund's quote from multiple data source
 }
 \examples{
 fundID <- c("519983.OF","519987.OF")
 begT <- as.Date("2016-01-05")
-variables <- c("NAV_adj_return1")
-MF_getQuote(fundID = fundID, begT = begT, variables = variables)
+# -- get one variable from wind
+variables <- "NAV_adj_return1"
+re <- MF_getQuote(fundID = fundID, begT = begT, variables = variables)
+# -- get multiple variables from wind
+variables <- "nav,NAV_adj,NAV_adj_return1"
+re <- MF_getQuote(fundID = fundID, begT = begT, variables = variables)
+
+# -- get one variable from jy
+variables <- "NVDailyGrowthRate"
+re <- MF_getQuote(fundID = fundID, variables = variables,datasrc = 'jy')
+variables <- "UnitNV,NVDailyGrowthRate"
+re <- MF_getQuote(fundID = fundID, variables = variables,datasrc = 'jy')
 }
