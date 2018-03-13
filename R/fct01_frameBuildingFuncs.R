@@ -783,7 +783,7 @@ factor_std <- function(TSF,method=c("none","scale","robustScale","reg"),
       }
       if(any(is.na(TSF_core$glm_wgt))){
         TSF_core <- dplyr::group_by(TSF_core, date)
-        TSF_core2 <- dplyr::mutate(TSF_core, 
+        TSF_core <- dplyr::mutate(TSF_core, 
                                    glm_wgt = ifelse(is.na(glm_wgt), yes = median(glm_wgt, na.rm = TRUE), no = glm_wgt))
         TSF_core <- as.data.frame(TSF_core)
       }
