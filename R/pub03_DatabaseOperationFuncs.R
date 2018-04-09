@@ -592,40 +592,52 @@ lcdb.fix.swindustry <- function(){
   l.SecondIndustryCode 'Code2',l.SecondIndustryName 'Name2',l.ThirdIndustryCode 'Code3',
   l.ThirdIndustryName 'Name3',convert(varchar, l.InfoPublDate, 112) 'InDate',
   convert(varchar, l.CancelDate, 112) 'OutDate',l.InfoSource,l.Standard,l.Industry,
-  l.IfPerformed 'Flag',convert(float,l.XGRQ) 'UpdateTime'
+  l.IfPerformed 'Flag',convert(float,l.XGRQ) 'UpdateTime',
+  convert(varchar, s.ListedDate, 112) 'IPODate'
   FROM LC_ExgIndustry l,SecuMain s
   where l.CompanyCode=s.CompanyCode and s.SecuCategory=1
-  and s.SecuMarket in(83,90) and l.Standard in(9,24)"
+  and s.SecuMarket in(83,90) and l.Standard in(9,24)
+  order by l.Standard,l.InfoPublDate"
   re <- queryAndClose.odbc(db.jy(),qr,as.is = TRUE)
-  re <- re[substr(re$stockID,1,3) %in% c('EQ6','EQ3','EQ0'),]
-  re <- re[ifelse(is.na(re$OutDate),TRUE,re$OutDate!=re$InDate),] # remove indate==outdate wrong data
-  re <- transform(re,InDate=as.integer(InDate),
-                  OutDate=as.integer(OutDate),
-                  UpdateTime=as.double(UpdateTime))
+  re <- re %>% filter(substr(stockID,1,3) %in% c('EQ6','EQ3','EQ0'),!is.na(IPODate)) %>% 
+    mutate(InDate=as.integer(InDate),OutDate=as.integer(OutDate),UpdateTime=as.double(UpdateTime),IPODate=as.integer(IPODate))
   
-  sw24use <- re[(re$InDate>=20140101) & (re$Standard==24),]
-  sw9use <- re[(re$InDate<20140101) & (re$Standard==9),]
+  #use standard 24 data directly
+  sw24use <- re %>% filter(Standard==24) %>% dplyr::select(-IPODate)
+  
+  #use standard 9 data before standard 24 published date
+  sw9use <- re %>% filter(Standard==9,InDate<20140101,IPODate<20140101)
   sw9use[is.na(sw9use$OutDate) | sw9use$OutDate>20140101,'OutDate'] <- 20140101
-  sw9use[,'Flag'] <- 2
-  sw9use <- dplyr::rename(sw9use,OldCode1=Code1,OldName1=Name1,OldCode2=Code2,
-                          OldName2=Name2,OldCode3=Code3,OldName3=Name3)
+  sw9use <- sw9use %>% mutate(Flag=2,unlistDate=trday.unlist(stockID)) %>% mutate(unlistDate=rdate2int(unlistDate))
+  sw9use <- sw9use[is.na(sw9use$unlistDate) | sw9use$InDate<sw9use$unlistDate,] # remove Indate> unlistdate
+  
+  # remove outdate> unlistdate
+  sw9use <- sw9use %>% mutate(OutDate=ifelse(!is.na(sw9use$unlistDate) & sw9use$OutDate>sw9use$unlistDate,unlistDate,OutDate)) %>% 
+    dplyr::select(-IPODate,-unlistDate) %>% 
+    dplyr::rename(OldCode1=Code1,OldName1=Name1,OldCode2=Code2,OldName2=Name2,OldCode3=Code3,OldName3=Name3)
   
   #convert old industry to new industry
   sw24tmp <- sw24use[sw24use$InDate==20140101,c("stockID","Code1","Name1","Code2","Name2","Code3","Name3")]
   sw9part1 <- sw9use[sw9use$OutDate==20140101,]
   sw9part1 <- dplyr::left_join(sw9part1,sw24tmp,by='stockID')
-  hashtable <- unique(sw9part1[,c("Code1","Name1","Code2","Name2","Code3","Name3","OldCode1","OldName1","OldCode2","OldName2","OldCode3","OldName3")])
-  hashtable <- na.omit(hashtable)
-  hashtable <- plyr::ddply(hashtable,~OldName3,plyr::mutate,n=length(OldName3))
-  hashtable <- hashtable[hashtable$n==1,c("Code1","Name1","Code2","Name2","Code3","Name3","OldCode1","OldName1","OldCode2","OldName2","OldCode3","OldName3")]
+  
+  #get industry match table
+  indmatch <- unique(sw9part1[,c("Code1","Name1","Code2","Name2","Code3","Name3","OldCode1","OldName1","OldCode2","OldName2","OldCode3","OldName3")])
+  indmatch <- plyr::ddply(indmatch,~OldName3,plyr::mutate,n=length(OldName3))
+  indmatch <- indmatch[indmatch$n==1,c("Code1","Name1","Code2","Name2","Code3","Name3","OldCode1","OldName1","OldCode2","OldName2","OldCode3","OldName3")]
   sw9part1 <- sw9part1[,colnames(sw24use)]
   
   sw9part2 <- sw9use[sw9use$OutDate<20140101,]
-  sw9part2 <- dplyr::left_join(sw9part2,hashtable,by=c("OldCode1","OldName1",
+  sw9part2 <- dplyr::left_join(sw9part2,indmatch,by=c("OldCode1","OldName1",
                                                        "OldCode2","OldName2",
                                                        "OldCode3","OldName3"))
-  sw9part2 <- sw9part2[,colnames(sw24use)]
-  sw9use <- rbind(sw9part1,sw9part2)
+  sw9part3 <- sw9part2 %>% filter(is.na(Code1)) %>% dplyr::select(-Code1,-Name1,-Code2,-Name2,-Code3,-Name3)
+  sw9part2 <- sw9part2[!is.na(sw9part2$Code1),colnames(sw24use)]
+  
+  sw9part3 <- dplyr::left_join(sw9part3,sw24tmp,by='stockID')
+  sw9part3 <- sw9part3[,colnames(sw24use)]
+  
+  sw9use <- rbind(sw9part1,sw9part2,sw9part3)
   
   #fill na to zonghe industry
   zhcn <- unique(sw24use[sw24use$Code1==510000,'Name1'])
@@ -703,6 +715,7 @@ lcdb.fix.swindustry <- function(){
   dbDisconnect(con)
   # return('Done!')
 }
+
 
 
 

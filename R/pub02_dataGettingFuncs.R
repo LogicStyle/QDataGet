@@ -588,6 +588,26 @@ trday.IPO <- function(stockID,datasrc=defaultDataSRC()){
   return(re)  
 }
 
+#' trday.unlist
+#' @param stockID a vector
+#' @return a vector
+#' @export
+#' @family SecuMain functions
+trday.unlist <- function(stockID){
+  stocks <- substr(unique(stockID),3,8)
+  
+  #get delist date
+  qr <- paste("SELECT 'EQ'+s.SecuCode 'stockID',convert(varchar,ChangeDate,112) 'delistdate'
+            FROM LC_ListStatus l
+            INNER join SecuMain s on l.InnerCode=s.InnerCode and s.SecuCategory=1
+            where l.ChangeType=4 and l.SecuMarket in (83,90)
+            and s.SecuCode in",brkQT(stocks))
+  tmpdat <- queryAndClose.odbc(db.jy(),qr,as.is = TRUE)
+  re <- tmpdat[match(stockID,tmpdat[,1]),2]  
+  re <- intdate2r(re)
+  return(re)  
+}
+
 
 # ===================== xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ==============
 # ====================    SecuMain related        ==============
