@@ -4,7 +4,7 @@
 \alias{trday.unlist}
 \title{trday.unlist}
 \usage{
-trday.unlist(stockID)
+trday.unlist(stockID, datasrc = "jy")
 }
 \arguments{
 \item{stockID}{a vector}

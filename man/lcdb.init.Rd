@@ -46,7 +46,7 @@ lcdb.export2csv("main","CT_TechVars")
 lcdb.export2csv("main","QT_FreeShares")
 lcdb.export2csv("fs","CT_FactorLists")
 # 2. build 3 empty sqlite files: qt.db, fs.db, main.db
-# 3. initialize 3 db files:
+# 3. initialize 3 database files, in proper order:
 lcdb.init_qt()
 lcdb.init_main()
 lcdb.init_fs()
